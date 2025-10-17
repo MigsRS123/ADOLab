@@ -1,62 +1,47 @@
-using System.Text;
 
-/// <summary>
-/// Fornece funcionalidade para registrar mensagens em um arquivo de forma assíncrona.
-/// </summary>
+using System.Text;
+using System.Threading;
+
 public class FileLogger
 {
     private readonly string _filePath;
+    private static readonly SemaphoreSlim _semaphore = new(1, 1);
 
-    /// <summary>
-    /// Inicializa uma nova instância da classe <see cref="FileLogger"/>.
-    /// </summary>
-    /// <param name="filePath">O caminho para o arquivo de log.</param>
     public FileLogger(string filePath)
     {
-        _filePath = filePath;
+        _filePath = filePath ?? throw new ArgumentNullException(nameof(filePath));
     }
 
-    /// <summary>
-    /// Registra uma mensagem informativa no arquivo de forma assíncrona.
-    /// </summary>
-    /// <param name="message">A mensagem a ser registrada.</param>
-    public async Task LogAsync(string message)
-    {
-        await LogToFileAsync("INFO", message);
-    }
+    public async Task LogAsync(string message) => await LogToFileAsync("INFO", message);
+    public async Task LogWarningAsync(string message) => await LogToFileAsync("WARNING", message);
+    public async Task LogErrorAsync(string message) => await LogToFileAsync("ERROR", message);
 
-    /// <summary>
-    /// Registra uma mensagem de aviso no arquivo de forma assíncrona.
-    /// </summary>
-    /// <param name="message">A mensagem a ser registrada.</param>
-    public async Task LogWarningAsync(string message)
-    {
-        await LogToFileAsync("WARNING", message);
-    }
-
-    /// <summary>
-    /// Registra uma mensagem de erro no arquivo de forma assíncrona.
-    /// </summary>
-    /// <param name="message">A mensagem a ser registrada.</param>
-    public async Task LogErrorAsync(string message)
-    {
-        await LogToFileAsync("ERROR", message);
-    }
-
-    /// <summary>
-    /// Registra uma mensagem no arquivo com o tipo de log especificado de forma assíncrona.
-    /// </summary>
-    /// <param name="logType">O tipo de log (por exemplo, INFO, WARNING, ERROR).</param>
-    /// <param name="message">A mensagem a ser registrada.</param>
     private async Task LogToFileAsync(string logType, string message)
     {
         try
         {
+            // Se existir um diretório (ex: "logs/app.log") cria, se for somente "log.txt" Path.GetDirectoryName retorna null/"" -> ignora
+            var dir = Path.GetDirectoryName(_filePath);
+            if (!string.IsNullOrWhiteSpace(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
             string logMessage = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] [{logType}] {message}{Environment.NewLine}";
-            await File.AppendAllTextAsync(_filePath, logMessage, Encoding.UTF8);
+
+            await _semaphore.WaitAsync();
+            try
+            {
+                await File.AppendAllTextAsync(_filePath, logMessage, Encoding.UTF8);
+            }
+            finally
+            {
+                _semaphore.Release();
+            }
         }
         catch (Exception ex)
         {
+            // Falha no logger não deve derrubar a aplicação; exibimos no console
             Console.WriteLine($"[LOG ERROR] {ex.Message}");
         }
     }

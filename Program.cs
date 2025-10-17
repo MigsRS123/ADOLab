@@ -1,16 +1,13 @@
 ﻿using Microsoft.Extensions.Configuration;
-using Microsoft.Data.SqlClient;
+using Oracle.ManagedDataAccess.Client;
 
-#region Config
-// Carrega a connection string do appsettings.json
 var config = new ConfigurationBuilder()
-    .AddJsonFile("appsettings.json", optional: false, reloadOnChange: true)
+    .AddJsonFile("C:\\Users\\Miguel Ruan\\Source\\Repos\\ADOLab\\appsettings.json", optional: false, reloadOnChange: true)
     .AddEnvironmentVariables()
     .Build();
 
-string connString = config.GetConnectionString("SqlServerConnection")
-    ?? throw new InvalidOperationException("ConnectionStrings:SqlServerConnection não encontrada.");
-#endregion
+string connString = config.GetConnectionString("OracleConnection")
+    ?? throw new InvalidOperationException("ConnectionStrings:OracleConnection não encontrada.");
 
 var logger = new FileLogger("log.txt");
 
@@ -18,7 +15,7 @@ try
 {
     var alunoRepo = new AlunoRepository(connString);
     await logger.LogAsync("Iniciando aplicação e garantindo o esquema.");
-    alunoRepo.GarantirEsquema(); // DDL: cria a tabela se não existir
+    alunoRepo.GarantirEsquema();
 
     while (true)
     {
@@ -60,7 +57,7 @@ try
                 Console.WriteLine("== Lista de Alunos ==");
                 foreach (var a in alunos)
                     Console.WriteLine($"#{a.Id} {a.Nome} ({a.Idade}) - {a.Email} - {a.DataNascimento:yyyy-MM-dd}");
-                Console.WriteLine(alunos.Count == 0 ? "(vazio)" : "");
+                if (alunos.Count == 0) Console.WriteLine("(vazio)");
                 await logger.LogAsync("Listou todos os alunos.");
                 break;
 
@@ -76,7 +73,7 @@ try
                     int rows = alunoRepo.Atualizar(idEdit, novoNome, novaIdade, novoEmail, novaDataNascimento);
                     Console.WriteLine(rows > 0 ? "✅ Atualizado." : "⚠️ Nenhum registro afetado.");
                     await logger.LogAsync(rows > 0
-                        ? $"Atualizado aluno Id={idEdit} com Nome={novoNome}, Idade={novaIdade}, Email={novoEmail}, DataNascimento={novaDataNascimento:yyyy-MM-dd}."
+                        ? $"Atualizado aluno Id={idEdit}."
                         : $"Nenhum registro atualizado para Id={idEdit}.");
                 }
                 else
@@ -104,14 +101,24 @@ try
                 break;
 
             case "5":
-                Console.Write("Propriedade (coluna): "); var propriedade = Console.ReadLine() ?? "";
-                Console.Write("Valor: "); var valor = Console.ReadLine() ?? "";
-                var resultados = alunoRepo.Buscar(propriedade, valor);
-                Console.WriteLine("== Resultados da Busca ==");
-                foreach (var r in resultados)
-                    Console.WriteLine($"#{r.Id} {r.Nome} ({r.Idade}) - {r.Email} - {r.DataNascimento:yyyy-MM-dd}");
-                Console.WriteLine(resultados.Count == 0 ? "(vazio)" : "");
-                await logger.LogAsync($"Buscou pela propriedade '{propriedade}' com valor '{valor}'.");
+                Console.Write("Propriedade (id, nome, idade, email, data_nascimento): ");
+                var propriedade = Console.ReadLine() ?? "";
+                Console.Write("Valor: ");
+                var valor = Console.ReadLine() ?? "";
+                try
+                {
+                    var resultados = alunoRepo.Buscar(propriedade, valor);
+                    Console.WriteLine("== Resultados da Busca ==");
+                    foreach (var r in resultados)
+                        Console.WriteLine($"#{r.Id} {r.Nome} ({r.Idade}) - {r.Email} - {r.DataNascimento:yyyy-MM-dd}");
+                    if (resultados.Count == 0) Console.WriteLine("(vazio)");
+                    await logger.LogAsync($"Buscou pela propriedade '{propriedade}' com valor '{valor}'.");
+                }
+                catch (ArgumentException ex)
+                {
+                    Console.WriteLine(ex.Message);
+                    await logger.LogWarningAsync(ex.Message);
+                }
                 break;
 
             default:
@@ -121,10 +128,10 @@ try
         }
     }
 }
-catch (SqlException ex)
+catch (OracleException ex)
 {
-    Console.WriteLine($"[ERRO SQL] {ex.Number} - {ex.Message}");
-    await logger.LogErrorAsync($"Erro SQL {ex.Number}: {ex.Message}");
+    Console.WriteLine($"[ERRO ORACLE] {ex.Number} - {ex.Message}");
+    await logger.LogErrorAsync($"Erro ORACLE {ex.Number}: {ex.Message}");
 }
 catch (Exception ex)
 {
